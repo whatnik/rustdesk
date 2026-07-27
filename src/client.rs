@@ -426,7 +426,15 @@ impl Client {
             NatType::from_i32(my_nat_type).unwrap_or(NatType::UNKNOWN_NAT)
         };
 
-        if !key.is_empty() && !token.is_empty() {
+        // secure_tcp() требует, чтобы сервер прислал KeyExchange первым сообщением —
+        // это часть протокола, которой нет в открытом rustdesk-server (только в
+        // закрытом RustDesk Server Pro), поэтому при залогиненном в API-сервер
+        // клиенте (token непустой) секция ниже раньше вешала соединение по
+        // таймауту ("Failed to secure tcp: deadline has elapsed"). Обычное
+        // сквозное шифрование сессии эта проверка не даёт — оно устанавливается
+        // отдельно, ниже по коду, независимо от этой ветки. Патч отключает
+        // именно эту избыточную Pro-специфичную проверку.
+        if false && !key.is_empty() && !token.is_empty() {
             // mainly for the security of token
             secure_tcp(&mut socket, &key)
                 .await
