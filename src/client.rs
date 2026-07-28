@@ -724,11 +724,17 @@ impl Client {
         let mut direct = !conn.is_err();
         if interface.is_force_relay() || conn.is_err() {
             if !relay_server.is_empty() {
+                // secure=true просит ПОЛУЧАТЕЛЯ тоже сделать Pro-only
+                // KeyExchange (см. остальные патчи secure_tcp выше) — с ним
+                // recipient падает "Failed to receive public key" (src/server.rs).
+                // hbbs с -k _ всегда подписывает id_pk своим настоящим ключом,
+                // поэтому !signed_id_pk.is_empty() истинно даже без логина —
+                // сам этот признак не годится как индикатор "нужен Pro-режим".
                 conn = Self::request_relay(
                     peer_id,
                     relay_server.to_owned(),
                     rendezvous_server,
-                    !signed_id_pk.is_empty(),
+                    false,
                     key,
                     token,
                     conn_type,
