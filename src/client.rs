@@ -863,7 +863,9 @@ impl Client {
                 .await
                 .with_context(|| "Failed to connect to rendezvous server")?;
 
-            if !key.is_empty() && !token.is_empty() {
+            // см. патч в _start_inner выше — тот же Pro-only KeyExchange,
+            // которого нет в открытом hbbs/hbbr, здесь для relay-подключения.
+            if false && !key.is_empty() && !token.is_empty() {
                 // mainly for the security of token
                 secure_tcp(&mut socket, key).await?;
             }
@@ -4056,7 +4058,12 @@ async fn hc_connection_(
     let host = check_port(&rendezvous_server, RENDEZVOUS_PORT);
     let mut conn = connect_tcp(host.clone(), CONNECT_TIMEOUT).await?;
     let key = crate::get_key(true).await;
-    crate::secure_tcp(&mut conn, &key).await?;
+    // см. патч в _start_inner выше — тот же Pro-only KeyExchange, здесь для
+    // фонового health-check соединения (не влияет на сам факт подключения,
+    // но раньше эта фоновая задача тоже бесконечно висела бы).
+    if false {
+        crate::secure_tcp(&mut conn, &key).await?;
+    }
     let mut msg_out = RendezvousMessage::new();
     msg_out.set_hc(HealthCheck {
         token,
