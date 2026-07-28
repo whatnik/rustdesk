@@ -724,17 +724,23 @@ impl Client {
         let mut direct = !conn.is_err();
         if interface.is_force_relay() || conn.is_err() {
             if !relay_server.is_empty() {
-                // secure=true просит ПОЛУЧАТЕЛЯ тоже сделать Pro-only
-                // KeyExchange (см. остальные патчи secure_tcp выше) — с ним
-                // recipient падает "Failed to receive public key" (src/server.rs).
-                // hbbs с -k _ всегда подписывает id_pk своим настоящим ключом,
-                // поэтому !signed_id_pk.is_empty() истинно даже без логина —
-                // сам этот признак не годится как индикатор "нужен Pro-режим".
+                // ВАЖНО: secure здесь — НЕ тот же Pro-only KeyExchange, что
+                // secure_tcp() (патчи выше)! Это флаг обычного сквозного
+                // шифрования сессии: secure_connection() ниже (после connect)
+                // и create_tcp_connection() на стороне получателя (server.rs)
+                // — штатный протокол RustDesk, использующий ЛОКАЛЬНО
+                // сгенерированную пару ключей получателя (Config::get_key_pair(),
+                // никак не связана с полем key в RustDesk2.toml). Прошлый патч
+                // (форсировал false) ошибочно принял это за Pro-режим — в
+                // результате получатель пропускал обмен ключами и ждал login
+                // от админа, а админ ждал SignedId от получателя — взаимный
+                // deadlock ("крутится", потом "Reset by the peer"/"deadline
+                // has elapsed" с обеих сторон). Возвращено исходное поведение.
                 conn = Self::request_relay(
                     peer_id,
                     relay_server.to_owned(),
                     rendezvous_server,
-                    false,
+                    !signed_id_pk.is_empty(),
                     key,
                     token,
                     conn_type,
