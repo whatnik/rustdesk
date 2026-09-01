@@ -265,14 +265,24 @@ pub async fn run(args: HeadlessTerminalArgs) -> ResultType<()> {
     // чтобы понять, что креды нужны. Важно сделать это ДО спавна потока,
     // читающего stdin ниже — иначе он и наш прямой read_line() дрались бы
     // за один и тот же fd.
+    //
+    // Приоритет источника креды: --admin-user/--admin-password (явно
+    // указаны при подключении) > переменные окружения
+    // HEADLESS_TERMINAL_ADMIN_USER/_PASSWORD (дефолт для повседневного
+    // использования — чтобы просто "--admin" не спрашивал пароль каждый
+    // раз, как и подключение без --admin вообще не спрашивает пароль
+    // текущего пользователя) > интерактивный промпт (последний резерв,
+    // если ни то ни другое не задано).
     let (admin_user, admin_password) = if args.admin {
         let user = args
             .admin_user
             .clone()
+            .or_else(|| std::env::var("HEADLESS_TERMINAL_ADMIN_USER").ok())
             .unwrap_or_else(|| prompt_line("OS admin username (управляемая сторона): "));
         let password = args
             .admin_password
             .clone()
+            .or_else(|| std::env::var("HEADLESS_TERMINAL_ADMIN_PASSWORD").ok())
             .unwrap_or_else(|| prompt_password("OS admin password: "));
         (user, password)
     } else {

@@ -11,7 +11,9 @@ fn print_usage_and_exit() -> ! {
          --admin           открыть терминал от имени администратора управляемой\n\
          \x20                  стороны (аналог \"Terminal (Run as administrator)\" в\n\
          \x20                  официальном клиенте) — если --admin-user/--admin-password\n\
-         \x20                  не заданы, спрашиваются интерактивно."
+         \x20                  не заданы явно, берутся из переменных окружения\n\
+         \x20                  HEADLESS_TERMINAL_ADMIN_USER/_PASSWORD, а если и их нет —\n\
+         \x20                  спрашиваются интерактивно."
     );
     std::process::exit(2);
 }
