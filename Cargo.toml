@@ -20,6 +20,10 @@ path = "src/naming.rs"
 name = "service"
 path = "src/service.rs"
 
+[[bin]]
+name = "headless_terminal"
+path = "src/bin/headless_terminal.rs"
+
 [features]
 inline = []
 use_samplerate = ["samplerate"]
