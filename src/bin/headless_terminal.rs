@@ -6,14 +6,17 @@ use librustdesk::headless_terminal::{run, HeadlessTerminalArgs};
 fn print_usage_and_exit() -> ! {
     eprintln!(
         "Использование: headless_terminal --id <RUSTDESK_ID> --password <PASSWORD> \
-         [--rows N] [--cols N] [--debug-log <путь>] \
+         [--rows N] [--cols N] [--debug-log <путь>] [--check-only] \
          [--admin [--admin-user <ИМЯ>] [--admin-password <ПАРОЛЬ>]]\n\n\
          --admin           открыть терминал от имени администратора управляемой\n\
          \x20                  стороны (аналог \"Terminal (Run as administrator)\" в\n\
          \x20                  официальном клиенте) — если --admin-user/--admin-password\n\
          \x20                  не заданы явно, берутся из переменных окружения\n\
          \x20                  HEADLESS_TERMINAL_ADMIN_USER/_PASSWORD, а если и их нет —\n\
-         \x20                  спрашиваются интерактивно."
+         \x20                  спрашиваются интерактивно.\n\
+         --check-only      только проверить, что --password подходит этому ID —\n\
+         \x20                  терминал не открывается. Успех: печатает \"AUTH_OK\",\n\
+         \x20                  exit 0. Провал: exit != 0."
     );
     std::process::exit(2);
 }
@@ -37,6 +40,7 @@ async fn async_main() {
     let mut admin = false;
     let mut admin_user: Option<String> = None;
     let mut admin_password: Option<String> = None;
+    let mut check_only = false;
 
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -49,6 +53,7 @@ async fn async_main() {
             "--admin" => admin = true,
             "--admin-user" => admin_user = args.next(),
             "--admin-password" => admin_password = args.next(),
+            "--check-only" => check_only = true,
             "-h" | "--help" => print_usage_and_exit(),
             _ => print_usage_and_exit(),
         }
@@ -67,6 +72,7 @@ async fn async_main() {
         admin,
         admin_user,
         admin_password,
+        check_only,
     })
     .await
     {

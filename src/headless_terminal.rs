@@ -204,6 +204,17 @@ pub struct HeadlessTerminalArgs {
     pub admin: bool,
     pub admin_user: Option<String>,
     pub admin_password: Option<String>,
+    /// Только проверить, что --password подходит этому ID — не открывая
+    /// терминал (ничего не спавнится на управляемой стороне) и не трогая
+    /// stdin/raw-mode вообще. Печатает "AUTH_OK" и exit 0 при успехе;
+    /// при ошибке логина — ненулевой exit код (см. run(), ветка
+    /// LoginResponse::Error). Заведено для бота (rustdesk_bot.py) — чтобы
+    /// не привязывать pending-заявку к первому попавшемуся новому ID
+    /// вслепую (гонка, если кто-то подключил клиента не через бота
+    /// одновременно с ожидающей заявкой), а проверять реальным логином,
+    /// что пароль совпадает — см. CLAUDE.md, "Проверка идентичности
+    /// клиента паролем (--check-only)".
+    pub check_only: bool,
 }
 
 /// Прочитать строку с клавиатуры (видимо) — для --admin-user, если не
@@ -255,6 +266,14 @@ fn debug_event(log: &mut Option<File>, text: &str) {
 }
 
 pub async fn run(args: HeadlessTerminalArgs) -> ResultType<()> {
+    // core_main.rs (обычный GUI-клиент) вызывает hbb_common::init_log() при
+    // старте — здесь этого никто не делал, из-за чего log::info!/warn! по
+    // всему client.rs/hbb_common молча уходили в никуда (не установлен ни
+    // один backend), включая RUST_LOG. Пишет в файл (в release-сборке,
+    // нашем случае) — flexi_logger, не stderr, см. hbb_common::config::
+    // Config::log_path() (~/.local/share/logs/RustDesk на Linux).
+    let _log_handle = hbb_common::init_log(false, "headless_terminal");
+
     if !crate::common::global_init() {
         bail!("global_init failed");
     }
@@ -336,6 +355,12 @@ pub async fn run(args: HeadlessTerminalArgs) -> ResultType<()> {
     // удалённая сторона осталась бы зафиксирована на размере, который
     // был при подключении, даже если пользователь потом растянул/сузил
     // окно — см. объяснение в PR-обсуждении 2026-08-22.
+    //
+    // В --check-only этот сигнал (как и поток чтения stdin ниже) заведён
+    // безвредно вхолостую — терминал в этом режиме никогда не открывается
+    // (см. ветку LoginResponse::PeerInfo ниже), значит ни один из них
+    // фактически не сработает; специально их не отключаем, чтобы не
+    // усложнять tokio::select! ниже условными Option-ветками.
     let mut winch = hbb_common::tokio::signal::unix::signal(
         hbb_common::tokio::signal::unix::SignalKind::window_change(),
     )?;
@@ -394,10 +419,24 @@ pub async fn run(args: HeadlessTerminalArgs) -> ResultType<()> {
                             Some(message::Union::LoginResponse(lr)) => match lr.union {
                                 Some(login_response::Union::Error(err)) => {
                                     eprintln!("login error: {err}");
+                                    if args.check_only {
+                                        // Ненулевой exit — отличимый от AUTH_OK сигнал для
+                                        // вызывающего (бота): пароль не подошёл (или иная
+                                        // ошибка логина) — не наш клиент, эту pending-заявку
+                                        // пробовать смысла нет.
+                                        bail!("AUTH_FAILED: {err}");
+                                    }
                                     return Ok(());
                                 }
                                 Some(login_response::Union::PeerInfo(pi)) => {
                                     iface.handle_peer_info(pi);
+                                    if args.check_only {
+                                        // Успешная авторизация — пароль подошёл. Терминал
+                                        // НЕ открываем (ничего не спавнится на управляемой
+                                        // стороне) — просто сигнализируем успех и выходим.
+                                        println!("AUTH_OK");
+                                        return Ok(());
+                                    }
                                     let mut open = OpenTerminal::new();
                                     open.terminal_id = 0;
                                     open.rows = init_rows;
