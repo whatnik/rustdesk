@@ -1,4 +1,5 @@
 import 'package:bot_toast/bot_toast.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common/widgets/dialog.dart';
@@ -953,6 +954,89 @@ abstract class BasePeerCard extends StatelessWidget {
 
   @protected
   void _update();
+
+  // Плаинтекст-пароль клиенту известен только из shared-адресной книги
+  // (personal ab хранит hash, у Recent/Fav/LAN пароль зашифрован машинным
+  // ключом и недоступен приложению вообще) — ищем по возрастанию цены: сама
+  // карточка -> та же id в любой shared-книге -> дефолтный shared-пароль
+  // текущей книги (тот же fallback, что и connectInPeerTab выше).
+  @protected
+  String _knownPassword() {
+    if (peer.password.isNotEmpty) {
+      return peer.password;
+    }
+    for (final ab in gFFI.abModel.addressbooks.values) {
+      if (ab.isPersonal()) continue;
+      final found = ab.peers.firstWhereOrNull((e) => e.id == peer.id);
+      if (found != null && found.password.isNotEmpty) {
+        return found.password;
+      }
+    }
+    if (tab == PeerTabIndex.ab) {
+      return gFFI.abModel.getdefaultSharedPassword() ?? '';
+    }
+    return '';
+  }
+
+  @protected
+  String _peerInfoText() {
+    final lines = <String>[];
+    void addLine(String label, String value) {
+      if (value.isNotEmpty) {
+        lines.add('${translate(label)}: $value');
+      }
+    }
+
+    addLine('Name', peer.alias);
+    addLine('ID', peer.id);
+    addLine('Password', _knownPassword());
+    addLine('Hostname', peer.hostname);
+    addLine('Username', peer.username);
+    addLine('Platform', peer.platform);
+    addLine('Note', peer.note);
+    return lines.join('\n');
+  }
+
+  @protected
+  void _copyValue(String value) {
+    Clipboard.setData(ClipboardData(text: value));
+    showToast(translate('Copied'));
+  }
+
+  @protected
+  MenuEntryBase<String> _copyAction() {
+    final entries = <MenuEntryBase<String>>[
+      MenuEntryButton<String>(
+        childBuilder: (TextStyle? style) =>
+            Text(translate('All'), style: style),
+        proc: () => _copyValue(_peerInfoText()),
+        padding: menuPadding,
+        dismissOnClicked: true,
+      ),
+      MenuEntryButton<String>(
+        childBuilder: (TextStyle? style) =>
+            Text(translate('ID'), style: style),
+        proc: () => _copyValue(peer.id),
+        padding: menuPadding,
+        dismissOnClicked: true,
+      ),
+    ];
+    final password = _knownPassword();
+    if (password.isNotEmpty) {
+      entries.add(MenuEntryButton<String>(
+        childBuilder: (TextStyle? style) =>
+            Text(translate('Password'), style: style),
+        proc: () => _copyValue(password),
+        padding: menuPadding,
+        dismissOnClicked: true,
+      ));
+    }
+    return MenuEntrySubMenu<String>(
+      text: translate('Copy'),
+      padding: menuPadding,
+      entries: entries,
+    );
+  }
 }
 
 class RecentPeerCard extends BasePeerCard {
@@ -992,6 +1076,8 @@ class RecentPeerCard extends BasePeerCard {
     if (isWindows) {
       menuItems.add(_createShortCutAction(peer.id));
     }
+    menuItems.add(MenuEntryDivider());
+    menuItems.add(_copyAction());
     menuItems.add(MenuEntryDivider());
     if (isMobile || isDesktop || isWebDesktop) {
       menuItems.add(_renameAction(peer.id));
@@ -1055,6 +1141,8 @@ class FavoritePeerCard extends BasePeerCard {
     if (isWindows) {
       menuItems.add(_createShortCutAction(peer.id));
     }
+    menuItems.add(MenuEntryDivider());
+    menuItems.add(_copyAction());
     menuItems.add(MenuEntryDivider());
     if (isMobile || isDesktop || isWebDesktop) {
       menuItems.add(_renameAction(peer.id));
@@ -1130,6 +1218,8 @@ class DiscoveredPeerCard extends BasePeerCard {
     }
 
     menuItems.add(MenuEntryDivider());
+    menuItems.add(_copyAction());
+    menuItems.add(MenuEntryDivider());
     menuItems.add(_removeAction(peer.id));
     return menuItems;
   }
@@ -1174,6 +1264,8 @@ class AddressBookPeerCard extends BasePeerCard {
     if (isWindows) {
       menuItems.add(_createShortCutAction(peer.id));
     }
+    menuItems.add(MenuEntryDivider());
+    menuItems.add(_copyAction());
     if (gFFI.abModel.current.canWrite()) {
       menuItems.add(MenuEntryDivider());
       if (isMobile || isDesktop || isWebDesktop) {
@@ -1336,6 +1428,8 @@ class MyGroupPeerCard extends BasePeerCard {
     // if (await bind.mainPeerHasPassword(id: peer.id)) {
     //   menuItems.add(_unrememberPasswordAction(peer.id));
     // }
+    menuItems.add(MenuEntryDivider());
+    menuItems.add(_copyAction());
     if (gFFI.userModel.userName.isNotEmpty) {
       menuItems.add(_addToAb(peer));
     }
