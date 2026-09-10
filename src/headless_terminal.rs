@@ -177,6 +177,41 @@ impl Drop for RawModeGuard {
     }
 }
 
+// Кросс-платформенная обёртка над SIGWINCH (см. комментарий у места вызова
+// ниже) — `tokio::signal::unix` не существует вне unix, а этот модуль
+// компилируется как часть библиотечного крейта целиком, в т.ч. при сборке
+// обычного Flutter-клиента под Windows. На unix — настоящий сигнал; на
+// прочих платформах — заглушка, которая просто никогда не срабатывает
+// (headless_terminal там всё равно никогда не собирается в бинарник и не
+// запускается).
+#[cfg(unix)]
+type WinchHandle = hbb_common::tokio::signal::unix::Signal;
+#[cfg(not(unix))]
+type WinchHandle = ();
+
+#[cfg(unix)]
+fn init_winch() -> std::io::Result<WinchHandle> {
+    hbb_common::tokio::signal::unix::signal(
+        hbb_common::tokio::signal::unix::SignalKind::window_change(),
+    )
+}
+#[cfg(not(unix))]
+fn init_winch() -> std::io::Result<WinchHandle> {
+    Ok(())
+}
+
+async fn wait_winch(handle: &mut WinchHandle) {
+    #[cfg(unix)]
+    {
+        handle.recv().await;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = handle;
+        std::future::pending::<()>().await
+    }
+}
+
 pub struct HeadlessTerminalArgs {
     pub id: String,
     pub password: String,
@@ -361,9 +396,18 @@ pub async fn run(args: HeadlessTerminalArgs) -> ResultType<()> {
     // (см. ветку LoginResponse::PeerInfo ниже), значит ни один из них
     // фактически не сработает; специально их не отключаем, чтобы не
     // усложнять tokio::select! ниже условными Option-ветками.
-    let mut winch = hbb_common::tokio::signal::unix::signal(
-        hbb_common::tokio::signal::unix::SignalKind::window_change(),
-    )?;
+    //
+    // `tokio::signal::unix` физически не существует вне unix — а этот модуль
+    // компилируется как часть библиотечного крейта `rustdesk` целиком (см.
+    // `pub mod headless_terminal;` в lib.rs), в том числе при сборке ОБЫЧНОГО
+    // Flutter-клиента под Windows (найдено вживую 2026-09-10: `cargo build
+    // --lib` для x86_64-pc-windows-msvc падал с `could not find 'unix' in
+    // 'signal'`), хотя сам бинарник headless_terminal на Windows никогда не
+    // собирается и не запускается (только `build-headless-terminal.sh`,
+    // локально, всегда на Linux). init_winch()/wait_winch() — кросс-
+    // платформенная обёртка: на unix — настоящий сигнал, на прочих
+    // платформах — заглушка, которая просто никогда не срабатывает.
+    let mut winch = init_winch()?;
 
     // Читаем stdin в отдельном блокирующем потоке (обычный std::io::stdin
     // блокирующий; после `stty raw` он отдаёт байты по одному нажатию,
@@ -510,7 +554,7 @@ pub async fn run(args: HeadlessTerminalArgs) -> ResultType<()> {
                 m.set_terminal_action(action);
                 peer.send(&m).await?;
             }
-            _ = winch.recv(), if opened => {
+            _ = wait_winch(&mut winch), if opened => {
                 if let Some((rows, cols)) = terminal_size() {
                     let mut resize = ResizeTerminal::new();
                     resize.terminal_id = 0;
