@@ -1,8 +1,25 @@
 // Тонкая обёртка над librustdesk::headless_terminal — вся логика в
 // src/headless_terminal.rs (часть библиотечного крейта, т.к. ей нужен
 // доступ к приватному модулю `client`, недоступному отдельному бинарю).
+//
+// `librustdesk::headless_terminal` в lib.rs исключён на android/ios
+// (`#[cfg(not(any(target_os = "android", target_os = "ios")))]` —
+// see lib.rs) — сам бинарник там никогда не собирается и не запускается
+// (только `build-headless-terminal.sh`, локально, всегда на Linux). Но
+// `cargo ndk ... build` в android-only-build.yml (в отличие от `--lib` у
+// windows-only-build.yml) собирает вообще все таргеты крейта, включая
+// [[bin]] headless_terminal из Cargo.toml — без cfg здесь сборка Android
+// падала бы с "unresolved import librustdesk::headless_terminal" (найдено
+// вживую 2026-09-10). Ниже — весь реальный код под cfg + пустая заглушка
+// на android/ios, чтобы `fn main()` существовал ровно один на любой
+// платформе.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 use librustdesk::headless_terminal::{run, HeadlessTerminalArgs};
 
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn main() {}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn print_usage_and_exit() -> ! {
     eprintln!(
         "Использование: headless_terminal --id <RUSTDESK_ID> --password <PASSWORD> \
@@ -21,6 +38,7 @@ fn print_usage_and_exit() -> ! {
     std::process::exit(2);
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn main() {
     // `tokio` не является прямым зависимым пакета верхнего уровня (все
     // остальные модули идут через `hbb_common::tokio`) — поэтому вместо
@@ -31,6 +49,7 @@ fn main() {
         .block_on(async_main());
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 async fn async_main() {
     let mut id = None;
     let mut password = None;
