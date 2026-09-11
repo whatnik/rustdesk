@@ -40,7 +40,10 @@ jobs:
                libgstreamer1.0-dev \
                libgstreamer-plugins-base1.0-dev \
                libgtk-3-dev \
+               libaom-dev \
                libopus-dev \
+               libvpx-dev \
+               libyuv-dev \
                libpam0g-dev \
                libpulse-dev \
                libva-dev \
