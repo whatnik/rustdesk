@@ -59,6 +59,28 @@ jobs:
                tree \
                wget
 
+      - name: Write libyuv.pc
+        # Ubuntu-пакет libyuv-dev несёт заголовки/.so/.a (стандартный multiarch
+        # путь /usr/lib/x86_64-linux-gnu/), но НЕ несёт pkg-config метаданные
+        # (.pc) — libyuv исторически не собирается через autotools/cmake с
+        # генерацией .pc. scrap (feature linux-pkg-config, libs/scrap/build.rs)
+        # ищет именно "libyuv" через pkg-config, без него падает с "unable to
+        # find 'libyuv' development headers with pkg-config" ещё до того, как
+        # успевает дойти до реальной компиляции librustdesk.
+        run: |
+          sudo tee /usr/lib/x86_64-linux-gnu/pkgconfig/libyuv.pc > /dev/null <<'EOF'
+          prefix=/usr
+          libdir=${prefix}/lib/x86_64-linux-gnu
+          includedir=${prefix}/include
+
+          Name: libyuv
+          Description: YUV scaling and conversion library
+          Version: 1883
+          Libs: -L${libdir} -lyuv
+          Cflags: -I${includedir}
+          EOF
+          pkg-config --exists --print-errors libyuv
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
