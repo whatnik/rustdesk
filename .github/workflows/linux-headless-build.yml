@@ -1,0 +1,80 @@
+name: Build Linux headless CLI clients (headless_terminal, headless_tunnel)
+
+# Наши два консольных (без Flutter/GUI) клиента для rustdesk_server —
+# headless_terminal (режим Terminal) и headless_tunnel (проброс портов/
+# SOCKS5, ConnType::PORT_FORWARD). Полноценный librustdesk-крейт всё равно
+# тянет весь стек GTK/gstreamer/wayland зависимостей (scrap не опционален),
+# поэтому сборка тяжёлая по памяти (в частности крейты bindgen/glib/gtk) —
+# именно поэтому она здесь, а не только локально: у GitHub-раннеров заметно
+# больше RAM, чем у машины, откуда этот workflow обычно запускают.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+               clang \
+               cmake \
+               curl \
+               gcc-multilib \
+               git \
+               g++ \
+               g++-multilib \
+               libayatana-appindicator3-dev \
+               libasound2-dev \
+               libc6-dev \
+               libclang-dev \
+               libunwind-dev \
+               libgstreamer1.0-dev \
+               libgstreamer-plugins-base1.0-dev \
+               libgtk-3-dev \
+               libopus-dev \
+               libpam0g-dev \
+               libpulse-dev \
+               libva-dev \
+               libxcb-randr0-dev \
+               libxcb-shape0-dev \
+               libxcb-xfixes0-dev \
+               libxdo-dev \
+               libxfixes-dev \
+               llvm-dev \
+               nasm \
+               ninja-build \
+               pkg-config \
+               tree \
+               wget
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+
+      - name: Build headless_terminal + headless_tunnel
+        run: |
+          cargo build --release --bin headless_terminal --bin headless_tunnel --features linux-pkg-config
+
+      - name: Prepare artifacts
+        run: |
+          mkdir -p dist
+          cp target/release/headless_terminal dist/
+          cp target/release/headless_tunnel dist/
+          ldd dist/headless_terminal || true
+          ldd dist/headless_tunnel || true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: headless-clients-linux-x86_64
+          path: dist/

@@ -106,7 +106,7 @@ pub async fn listen(
     Ok(())
 }
 
-async fn connect_and_login(
+pub(crate) async fn connect_and_login(
     id: &str,
     password: &str,
     ui_receiver: &mut mpsc::UnboundedReceiver<Data>,
@@ -204,7 +204,7 @@ async fn connect_and_login(
     Ok(Some(stream))
 }
 
-async fn run_forward(forward: Framed<TcpStream, BytesCodec>, stream: Stream) -> ResultType<()> {
+pub(crate) async fn run_forward(forward: Framed<TcpStream, BytesCodec>, stream: Stream) -> ResultType<()> {
     log::info!("new port forwarding connection started");
     let mut forward = forward;
     let mut stream = stream;
