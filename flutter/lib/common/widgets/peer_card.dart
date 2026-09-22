@@ -1641,10 +1641,14 @@ void connectInPeerTab(BuildContext context, Peer peer, PeerTabIndex tab,
   var password = '';
   bool isSharedPassword = false;
   if (tab == PeerTabIndex.ab) {
-    // If recent peer's alias is empty, set it to ab's alias
-    // Because the platform is not set, it may not take effect, but it is more important not to display if the connection is not successful
+    // Keep the local peer-config alias (used for the connection window title/tab
+    // label via tablabelGetter -> mainGetPeerOptionSync 'alias') in sync with the
+    // address book. Upstream only fills it when the local alias is EMPTY, so a
+    // stale local alias (e.g. after the AB entry was renamed) is never refreshed
+    // and the window title keeps showing the old name. Refresh whenever it differs.
     if (peer.alias.isNotEmpty &&
-        (await bind.mainGetPeerOption(id: peer.id, key: "alias")).isEmpty) {
+        (await bind.mainGetPeerOption(id: peer.id, key: "alias")) !=
+            peer.alias) {
       await bind.mainSetPeerAlias(
         id: peer.id,
         alias: peer.alias,
