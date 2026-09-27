@@ -144,6 +144,49 @@ class _RemotePageState extends State<RemotePage>
     _remoteCursorMoved = RemoteCursorMovedState.find(id);
   }
 
+  // Патч: при каждом подключении окно подгоняется под размер удалённого
+  // экрана (оригинальный масштаб + то же, что пункт "Adjust Window"),
+  // а не открывается с размером, сохранённым в прошлый раз. Если удалённый
+  // экран не помещается на локальном — адаптивный масштаб и развернуть.
+  // Только один раз за сессию (первый кадр приходит и после реконнекта),
+  // не в полноэкранном режиме и не когда в окне несколько вкладок.
+  bool _autoFitDone = false;
+
+  Future<void> _autoFitWindow() async {
+    if (_autoFitDone || isWeb || !mounted) return;
+    _autoFitDone = true;
+    try {
+      if (stateGlobal.fullscreen.isTrue) return;
+      if (RemoteCountState.find().value != 1) return;
+      final wc = WindowController.fromWindowId(stateGlobal.windowId);
+      if (await wc.isMaximized()) {
+        await wc.unmaximize();
+        stateGlobal.setMaximized(false);
+        // Дать окну применить новый размер до замеров в doAdjustWindow().
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+      await bind.sessionSetViewStyle(
+          sessionId: sessionId, value: kRemoteViewStyleOriginal);
+      await _ffi.canvasModel.updateViewStyle();
+      if (!mounted) return;
+      final adjustor = ScreenAdjustor(
+          id: widget.id, ffi: _ffi, cbExitFullscreen: () {});
+      await adjustor.updateScreen();
+      if (!mounted) return;
+      if (await adjustor.isWindowCanBeAdjusted()) {
+        await adjustor.doAdjustWindow(context);
+      } else {
+        await bind.sessionSetViewStyle(
+            sessionId: sessionId, value: kRemoteViewStyleAdaptive);
+        await _ffi.canvasModel.updateViewStyle();
+        await wc.maximize();
+        stateGlobal.setMaximized(true);
+      }
+    } catch (e) {
+      debugPrint('autoFitWindow: $e');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -162,6 +205,7 @@ class _RemotePageState extends State<RemotePage>
           _ffi.ffiModel.pi.platform, _ffi.dialogManager);
       _ffi.recordingModel
           .updateStatus(bind.sessionGetIsRecording(sessionId: _ffi.sessionId));
+      _autoFitWindow();
     });
     _ffi.canvasModel.initializeEdgeScrollFallback(this);
     _ffi.start(
